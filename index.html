@@ -1836,9 +1836,10 @@ a.btn:hover,.btn:hover,.button:hover,.button.primary:hover,.btn-primary:hover,.c
 
 <script id="yw-page-visit-counter-js">
 (function(){
-  var adminKey = 'gamehubappco';
+  var adminKey = '';
+  var adminViewMarker = 'visit_stats';
   var params = new URLSearchParams(window.location.search);
-  var adminMode = params.has(adminKey) || /^\/gamehubappco=1\/?$/.test(window.location.pathname);
+  var adminMode = params.get(adminViewMarker) === '1';
   var endpoint = '/api/page-visit-counter.php';
   var endpointVersion = 'v=20260511a';
   var storageKey = 'yw_visit_id';
@@ -1951,7 +1952,10 @@ a.btn:hover,.btn:hover,.button:hover,.button.primary:hover,.btn-primary:hover,.c
     if (jump) jump.classList.add('is-visible');
     setTimeout(function(){ panel.scrollIntoView({behavior: 'smooth', block: 'start'}); }, 350);
 
-    fetch(endpoint + '?mode=stats&key=' + encodeURIComponent(adminKey) + '&' + endpointVersion, {
+    if (!adminKey) adminKey = window.prompt('Administrator access key') || '';
+    if (!adminKey) return;
+    fetch(endpoint + '?mode=stats&' + endpointVersion, {
+      headers: {'X-Visit-Admin-Key': adminKey},
       credentials: 'same-origin',
       cache: 'no-store'
     }).then(function(response){ return response.json(); }).then(function(data){

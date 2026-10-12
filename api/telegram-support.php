@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . "/security.php";
 // ===============================
 // GameHub TELEGRAM BOT
 // UID FLOW + SAMPLE PHOTO + RECHARGE SUBMENU + HUMAN TEACHER HANDOFF
@@ -42,8 +43,8 @@ if ($requestMethod === "GET" || $requestMethod === "HEAD") {
 }
 
 // Optional bot admin settings. Keep secrets inside private_bot/config.php or panel_token.txt.
-$ADMIN_CHAT_ID = (string)($config["ADMIN_CHAT_ID"] ?? "8655066559");
-$ADMIN_TESTER_USERNAMES = $config["ADMIN_TESTER_USERNAMES"] ?? ["fumakill4"];
+$ADMIN_CHAT_ID = (string)($config["ADMIN_CHAT_ID"] ?? "");
+$ADMIN_TESTER_USERNAMES = $config["ADMIN_TESTER_USERNAMES"] ?? [];
 $ADMIN_TESTER_CHAT_IDS = $config["ADMIN_TESTER_CHAT_IDS"] ?? [];
 $CURRENT_TELEGRAM_USERNAME = "";
 $PANEL_BEARER_TOKEN = trim((string)($config["PANEL_BEARER_TOKEN"] ?? ""));
@@ -2023,7 +2024,7 @@ function handlePanelAutoSyncRequest() {
 
     $incomingSecret = $_SERVER["HTTP_X_PANEL_AUTO_SYNC_SECRET"] ?? "";
 
-    if ($PANEL_AUTO_SYNC_SECRET !== "" && !hash_equals($PANEL_AUTO_SYNC_SECRET, $incomingSecret)) {
+    if (!security_secret_matches($PANEL_AUTO_SYNC_SECRET, (string)$incomingSecret)) {
         http_response_code(403);
         echo json_encode([
             "ok" => false,
@@ -2929,6 +2930,13 @@ function sendRedemptionStatusResult($chat_id, $uid, $orderNumber, $status, $user
 
     $orderNumber = normalizeOrderNumber($orderNumber);
     $record = getRedemptionRecord($orderNumber);
+    global $config;
+    if (!isAdminChat($chat_id) && (!is_array($record) || !security_redemption_owner(
+        $record, (string)$uid, (string)$chat_id, (array)($config["VERIFIED_CHAT_UIDS"] ?? [])
+    ))) {
+        showHumanAgentMenu($chat_id, "Please contact support to verify account ownership.");
+        return;
+    }
 
     if (!$BOT_API_WEBHOOK_FALLBACK_MODE) {
         sendMessage($chat_id, "⏳ Please wait while we check your redemption status.");
@@ -2976,6 +2984,15 @@ function sendRedemptionStatusResult($chat_id, $uid, $orderNumber, $status, $user
 
 function completeRedemptionCheck($chat_id, $uid, $orderNumber, $username, $first_name) {
     $orderNumber = normalizeOrderNumber($orderNumber);
+    global $config;
+    $record = getRedemptionRecord($orderNumber);
+    if (!isAdminChat($chat_id) && (!is_array($record) || !security_redemption_owner(
+        $record, (string)$uid, (string)$chat_id, (array)($config["VERIFIED_CHAT_UIDS"] ?? [])
+    ))) {
+        showHumanAgentMenu($chat_id, "Please contact support to verify account ownership.");
+        return;
+    }
+
 
     if (!trackRedeemCheckLimit($chat_id, $uid, $username, $first_name)) {
         showLockoutMessage($chat_id, $username, $first_name);
@@ -3025,13 +3042,11 @@ if (isPanelAutoSyncRequest($update)) {
     exit;
 }
 
-// Secret webhook validation. Telegram updates tetap harus melewati secret token.
-if ($WEBHOOK_SECRET !== "") {
-    $incomingSecret = $_SERVER["HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN"] ?? "";
-    if (!hash_equals($WEBHOOK_SECRET, $incomingSecret)) {
-        http_response_code(403);
-        exit;
-    }
+// Authenticate every Telegram update before trusting sender identity or callbacks.
+$incomingSecret = (string)($_SERVER["HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN"] ?? "");
+if (!security_secret_matches((string)$WEBHOOK_SECRET, $incomingSecret)) {
+    http_response_code(403);
+    exit;
 }
 
 // ===============================
