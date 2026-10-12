@@ -1,19 +1,19 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/security.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('X-Robots-Tag: noindex, nofollow', true);
 
-$adminKey = 'gamehubappco';
+$adminKey = (string)(getenv('VISIT_ADMIN_KEY') ?: '');
 $today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Makassar')))->format('Y-m-d');
 
 $privateDir = realpath(__DIR__ . '/../../private_bot');
 if (!$privateDir || !is_writable($privateDir)) {
-    $privateDir = __DIR__ . '/../.visit-data';
-    if (!is_dir($privateDir)) {
-        mkdir($privateDir, 0755, true);
-    }
+    http_response_code(503);
+    echo json_encode(['ok' => false, 'error' => 'private_store_unavailable']);
+    exit;
 }
 
 $storeFile = $privateDir . '/page_visits.json';
@@ -141,8 +141,8 @@ if ($method === 'POST') {
 }
 
 $mode = $_GET['mode'] ?? ($input['mode'] ?? 'track');
-$key = (string)($_GET['key'] ?? ($input['key'] ?? ''));
-$isAdmin = hash_equals($adminKey, $key);
+$key = (string)($_SERVER['HTTP_X_VISIT_ADMIN_KEY'] ?? '');
+$isAdmin = security_secret_matches($adminKey, $key);
 
 $handle = fopen($storeFile, 'c+');
 if (!$handle) {
